@@ -113,7 +113,7 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
 // MOCK AUTH STATE (For LocalStorage Fallback)
 // =========================================================================
 export const DEFAULT_USER = {
-  id: 'guest-explorer',
+  id: 'd8a39151-6efc-4e8c-9a4f-5dc5a0b7e28b',
   email: 'explorer@questvault.com',
   user_metadata: {
     full_name: 'Noble Explorer',
@@ -205,6 +205,8 @@ const addLocalBadge = (userId: string, badgeId: string): UserBadge | null => {
 // =========================================================================
 // AUTHENTICATION SERVICES
 // =========================================================================
+let activeAuthPromise: Promise<any> | null = null;
+
 export const authService = {
   async signUp(email: string, password: string) {
     if (isSupabaseConfigured && supabase) {
@@ -245,8 +247,37 @@ export const authService = {
 
   async getCurrentUser() {
     if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      return user || DEFAULT_USER;
+      if (activeAuthPromise) {
+        console.log('[Auth] activeAuthPromise is active, returning it');
+        return activeAuthPromise;
+      }
+
+      activeAuthPromise = (async () => {
+        try {
+          console.log('[Auth] Fetching getUser()');
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            console.log('[Auth] getUser() found user:', user.id, 'is_anonymous:', user.is_anonymous);
+            return user;
+          }
+
+          console.log('[Auth] No session found, running signInAnonymously()');
+          const { data, error } = await supabase.auth.signInAnonymously();
+          if (error) {
+            console.error('[Auth] signInAnonymously() failed with error:', error);
+            throw error;
+          }
+          console.log('[Auth] signInAnonymously() succeeded, user:', data.user?.id);
+          return data.user;
+        } catch (e) {
+          console.error('[Auth] Failed to get or sign in user to Supabase, returning DEFAULT_USER:', e);
+          return DEFAULT_USER;
+        } finally {
+          activeAuthPromise = null;
+        }
+      })();
+
+      return activeAuthPromise;
     } else {
       return getMockUser();
     }
@@ -349,18 +380,35 @@ export const questService = {
     }
   },
 
+  sanitizeQuestData(data: any) {
+    const sanitized = { ...data };
+    for (const key of Object.keys(sanitized)) {
+      if (sanitized[key] === '') {
+        sanitized[key] = null;
+      }
+    }
+    return sanitized;
+  },
+
   async createQuest(quest: Omit<Quest, 'id' | 'user_id' | 'status' | 'photo_urls' | 'completed_at' | 'created_at' | 'updated_at'>): Promise<Quest> {
+    console.log('[QuestService] createQuest() called with quest data:', quest);
     const user = await authService.getCurrentUser();
+    console.log('[QuestService] createQuest() resolved user:', user?.id);
     if (!user) throw new Error('Authentication required');
 
+    const sanitizedQuest = questService.sanitizeQuestData(quest);
     const newQuestData = {
-      ...quest,
+      ...sanitizedQuest,
       status: 'Pending' as QuestStatus,
       photo_urls: [] as string[],
       completed_at: null,
     };
 
     if (isSupabaseConfigured && supabase) {
+      console.log('[QuestService] Inserting quest into public.quests table:', {
+        ...newQuestData,
+        user_id: user.id
+      });
       const { data, error } = await supabase
         .from('quests')
         .insert({
@@ -370,9 +418,14 @@ export const questService = {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[QuestService] Insert failed with error:', error);
+        throw error;
+      }
+      console.log('[QuestService] Insert succeeded. Created quest:', data);
       return data;
     } else {
+      console.log('[QuestService] Falling back to LocalStorage to create quest');
       const quests = getLocalQuests();
       const newQuest: Quest = {
         ...newQuestData,
@@ -388,10 +441,12 @@ export const questService = {
   },
 
   async updateQuest(id: string, questData: Partial<Omit<Quest, 'id' | 'user_id' | 'created_at' | 'updated_at'>>): Promise<Quest> {
+    const sanitizedQuestData = questService.sanitizeQuestData(questData);
+
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from('quests')
-        .update(questData)
+        .update(sanitizedQuestData)
         .eq('id', id)
         .select()
         .single();
@@ -405,7 +460,7 @@ export const questService = {
 
       const updatedQuest: Quest = {
         ...quests[index],
-        ...questData,
+        ...sanitizedQuestData,
         updated_at: new Date().toISOString()
       };
       quests[index] = updatedQuest;
@@ -454,7 +509,7 @@ export const questService = {
       if (error) throw error;
       updatedQuest = data;
     } else {
-      updatedQuest = await this.updateQuest(id, updateData);
+      updatedQuest = await questService.updateQuest(id, updateData);
     }
 
     // Update streaks and evaluate achievements
@@ -514,7 +569,7 @@ export const gamificationService = {
     const todayStr = new Date().toISOString().split('T')[0];
     
     if (isSupabaseConfigured && supabase) {
-      const currentStreakData = await this.getStreak();
+      const currentStreakData = await gamificationService.getStreak();
       if (!currentStreakData) throw new Error('Streak record initialization failed');
 
       let current = currentStreakData.current_streak;
@@ -614,7 +669,7 @@ export const gamificationService = {
   },
 
   async evaluateBadges(userId: string, completedQuest: Quest): Promise<BadgeDefinition[]> {
-    const earnedBadges = await this.getEarnedBadges();
+    const earnedBadges = await gamificationService.getEarnedBadges();
     const earnedIds = new Set(earnedBadges.map(b => b.badge_id));
     const newlyEarned: BadgeDefinition[] = [];
 
