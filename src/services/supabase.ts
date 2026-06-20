@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Environment variables
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tchhqwbrfftmwivvmiuz.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_xbV3qieq9ivnl4XSOPSD5Q_M8YPeeCg';
 
 // Detect if we have real Supabase config
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
@@ -263,12 +263,12 @@ export const authService = {
         try {
           console.log('[Auth] Fetching getUser()');
           const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
+          if (user && !user.is_anonymous) {
             console.log('[Auth] getUser() found user:', user.id, 'is_anonymous:', user.is_anonymous);
             return user;
           }
 
-          console.log('[Auth] No session found, trying to log in as default shared user');
+          console.log('[Auth] No session found (or anonymous session), trying to log in as default shared user');
           try {
             const { data, error } = await supabase.auth.signInWithPassword({
               email: 'explorer@questvault.com',
@@ -373,14 +373,12 @@ export const questService = {
       const { data, error } = await supabase
         .from('quests')
         .select('*')
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data || [];
     } else {
-      const allQuests = getLocalQuests();
-      return allQuests.filter(q => q.user_id === user.id);
+      return getLocalQuests();
     }
   },
 
