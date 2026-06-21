@@ -31,22 +31,30 @@ CREATE INDEX IF NOT EXISTS quests_status_idx ON public.quests(status);
 ALTER TABLE public.quests ENABLE ROW LEVEL SECURITY;
 
 -- Policies for quests
-CREATE POLICY "Users can view their own quests" 
+DROP POLICY IF EXISTS "Users can view their own quests" ON public.quests;
+DROP POLICY IF EXISTS "Anyone can view quests" ON public.quests;
+CREATE POLICY "Anyone can view quests" 
     ON public.quests FOR SELECT 
-    USING (auth.uid() = user_id);
+    USING (true);
 
-CREATE POLICY "Users can create their own quests" 
+DROP POLICY IF EXISTS "Users can create their own quests" ON public.quests;
+DROP POLICY IF EXISTS "Anyone can create quests" ON public.quests;
+CREATE POLICY "Anyone can create quests" 
     ON public.quests FOR INSERT 
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK (true);
 
-CREATE POLICY "Users can update their own quests" 
+DROP POLICY IF EXISTS "Users can update their own quests" ON public.quests;
+DROP POLICY IF EXISTS "Anyone can update quests" ON public.quests;
+CREATE POLICY "Anyone can update quests" 
     ON public.quests FOR UPDATE 
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY "Users can delete their own quests" 
+DROP POLICY IF EXISTS "Users can delete their own quests" ON public.quests;
+DROP POLICY IF EXISTS "Anyone can delete quests" ON public.quests;
+CREATE POLICY "Anyone can delete quests" 
     ON public.quests FOR DELETE 
-    USING (auth.uid() = user_id);
+    USING (true);
 
 
 -- =========================================================================
@@ -65,14 +73,18 @@ CREATE TABLE IF NOT EXISTS public.streaks (
 ALTER TABLE public.streaks ENABLE ROW LEVEL SECURITY;
 
 -- Policies for streaks
-CREATE POLICY "Users can view their own streak" 
+DROP POLICY IF EXISTS "Users can view their own streak" ON public.streaks;
+DROP POLICY IF EXISTS "Anyone can view streaks" ON public.streaks;
+CREATE POLICY "Anyone can view streaks" 
     ON public.streaks FOR SELECT 
-    USING (auth.uid() = user_id);
+    USING (true);
 
-CREATE POLICY "Users can manage their own streak" 
+DROP POLICY IF EXISTS "Users can manage their own streak" ON public.streaks;
+DROP POLICY IF EXISTS "Anyone can manage streaks" ON public.streaks;
+CREATE POLICY "Anyone can manage streaks" 
     ON public.streaks FOR ALL 
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
+    USING (true)
+    WITH CHECK (true);
 
 
 -- =========================================================================
@@ -93,13 +105,17 @@ CREATE INDEX IF NOT EXISTS user_badges_user_id_idx ON public.user_badges(user_id
 ALTER TABLE public.user_badges ENABLE ROW LEVEL SECURITY;
 
 -- Policies for badges
-CREATE POLICY "Users can view their own badges" 
+DROP POLICY IF EXISTS "Users can view their own badges" ON public.user_badges;
+DROP POLICY IF EXISTS "Anyone can view badges" ON public.user_badges;
+CREATE POLICY "Anyone can view badges" 
     ON public.user_badges FOR SELECT 
-    USING (auth.uid() = user_id);
+    USING (true);
 
-CREATE POLICY "Users can earn their own badges" 
+DROP POLICY IF EXISTS "Users can earn their own badges" ON public.user_badges;
+DROP POLICY IF EXISTS "Anyone can earn badges" ON public.user_badges;
+CREATE POLICY "Anyone can earn badges" 
     ON public.user_badges FOR INSERT 
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK (true);
 
 
 -- =========================================================================
@@ -113,6 +129,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_quests_updated_at ON public.quests;
 CREATE TRIGGER update_quests_updated_at
     BEFORE UPDATE ON public.quests
     FOR EACH ROW
@@ -133,11 +150,13 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Storage policies for the 'questvault' bucket
 -- Allow public access to read files
+DROP POLICY IF EXISTS "Public Access" ON storage.objects;
 CREATE POLICY "Public Access" 
     ON storage.objects FOR SELECT 
     USING (bucket_id = 'questvault');
 
 -- Allow authenticated users to upload files to their own folder
+DROP POLICY IF EXISTS "Allow Auth Uploads" ON storage.objects;
 CREATE POLICY "Allow Auth Uploads" 
     ON storage.objects FOR INSERT 
     WITH CHECK (
@@ -147,6 +166,7 @@ CREATE POLICY "Allow Auth Uploads"
     );
 
 -- Allow authenticated users to update/delete their own files
+DROP POLICY IF EXISTS "Allow Auth Updates" ON storage.objects;
 CREATE POLICY "Allow Auth Updates" 
     ON storage.objects FOR UPDATE 
     USING (
@@ -155,6 +175,7 @@ CREATE POLICY "Allow Auth Updates"
         AND (storage.foldername(name))[1] = auth.uid()::text
     );
 
+DROP POLICY IF EXISTS "Allow Auth Deletes" ON storage.objects;
 CREATE POLICY "Allow Auth Deletes" 
     ON storage.objects FOR DELETE 
     USING (
